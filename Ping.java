@@ -39,8 +39,8 @@ public class Ping {
             this.packetLossChance = packetLossChance;
         }
         public UDPServer() {
-            // default to port 2000 with a 50% chance of packet loss
-            this(2000, "localhost", 0.5f);
+            // default to port 2000 with a 10% chance of packet loss
+            this(2000, "localhost", 0.1f);
         }
 
         public boolean isListening() {
@@ -68,7 +68,6 @@ public class Ping {
                     if (Math.random() > packetLossChance) {
                         Thread.sleep((int) (Math.random() * 200));
 
-                        System.out.println("SERVER: PACKET RECEIVED: " + new Date());
                         InetAddress remoteAddr = inPacket.getAddress();
 
                         ByteArrayInputStream bin = new ByteArrayInputStream(inPacket.getData());
@@ -82,7 +81,7 @@ public class Ping {
                                 inPacketId += (char) data;
                             }
                         }
-                        System.out.println(inPacketId);
+                        System.out.println("SERVER: PACKET RECEIVED: " + inPacketId);
 
                         DatagramPacket outPacket = new DatagramPacket(inPacket.getData(), inPacket.getLength());
 
@@ -90,13 +89,15 @@ public class Ping {
                         outPacket.setPort(inPacket.getPort());
 
                         socket.send(outPacket);
-                        System.out.println("SERVER: PACKET ACK FOR " + inPacketId + " SENT AT: " + new Date());
+                        System.out.println("SERVER: PACKET ACK FOR " + inPacketId + " SENT");
                     } else {
-                        System.out.println("SERVER: PACKET DROPPED: " + new Date());
+                        System.out.println("SERVER: PACKET DROPPED");
                     }
                 }
             } catch(IOException e) {
-                System.err.println("SERVER ERROR: " + e);
+                if (!e.getMessage().equals("Socket is closed")) {
+                    System.err.println("SERVER ERROR: " + e);
+                }
             } catch(InterruptedException e) {
                 System.err.println("SERVER ERROR: " + e);
             }
@@ -118,12 +119,9 @@ public class Ping {
 
         public void run() {
             try {
-                final DatagramSocket socket = new DatagramSocket();
-                System.out.println("UDP SENDER using local port: " + socket.getLocalPort() + " ...");
-
                 List<Thread> clients = new ArrayList<>();
                 for (int i = 0; i < iterations; i++) {
-                    Thread client = new UDPClientPing(hostname, socket);
+                    Thread client = new UDPClientPing(hostname);
                     clients.add(client);
                     client.start();
                 }
@@ -133,8 +131,6 @@ public class Ping {
                 }
             } catch (InterruptedException e) {
                 System.err.println("CLIENT ERROR: " + e);
-            } catch(IOException e) {
-                System.err.println("CLIENT ERROR: " + e);
             }
         }
     }
@@ -142,17 +138,17 @@ public class Ping {
     public static class UDPClientPing extends Thread {
         private String id;
         private String hostname;
-        final DatagramSocket socket;
 
 
-        public UDPClientPing(String hostname, DatagramSocket socket) {
+        public UDPClientPing(String hostname) {
             this.id = System.nanoTime() + "";
             this.hostname = hostname;
-            this.socket = socket;
         }
 
         public void run() {
             try {
+                DatagramSocket socket = new DatagramSocket();
+
                 ByteArrayOutputStream bOut = new ByteArrayOutputStream();
                 PrintStream pOut = new PrintStream(bOut);
                 pOut.print(id);
@@ -164,17 +160,18 @@ public class Ping {
                 outPacket.setAddress(remoteAddr);
                 outPacket.setPort(2000);
 
+                long startTime = System.currentTimeMillis();
                 socket.send(outPacket);
-                System.out.println("CLIENT: PACKET " + id + " SENT AT: " + new Date());
+                System.out.println("CLIENT: PACKET " + id + " SENT");
 
                 DatagramPacket inPacket = new DatagramPacket(new byte[256], 256);
-                System.out.println("CLIENT: PACKET " + id + " WAITING: " + new Date());
-
                 socket.setSoTimeout(300);
                 socket.receive(inPacket);
-                System.out.println("CLIENT: PACKET "+ id +" DONE: " + new Date());
+
+                long endTime = System.currentTimeMillis();
+                System.out.println("CLIENT: PACKET "+ id +" ACK RECEIVED, Total = " + (endTime - startTime) + "ms");
             } catch(SocketTimeoutException e){
-                System.err.println("CLIENT Timeout: " + e);
+                System.err.println("CLIENT Timeout the host is unreachable");
             } catch(UnknownHostException e){
                 System.err.println("CLIENT PING UNKNOWN HOST: " + hostname);
             } catch(IOException e) {
